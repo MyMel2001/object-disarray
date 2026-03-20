@@ -3,97 +3,129 @@ const express = require('express');
 const axios = require('axios');
 const { JSDOM } = require('jsdom');
 const { Readability } = require('@mozilla/readability');
+const ytdl = require('yt-dlp-exec');
 const path = require('path');
 
 const app = express();
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
-// AI Config
 const aiClient = axios.create({
     baseURL: process.env.AI_BASE_URL,
     headers: { 'Authorization': `Bearer ${process.env.AI_API_KEY}` }
 });
 
-// Logic to intelligently generate a query if user is vague
+// Helper: Get direct media URL via yt-dlp
+async function getMediaStream(url) {
+    try {
+        const output = await ytdl(url, {
+            dumpSingleJson: true,
+            noCheckCertificates: true,
+            noWarnings: true,
+            preferFreeFormats: true,
+            addHeader: ['referer:youtube.com', 'user-agent:googlebot']
+        });
+        // Returns the best single file URL (often a combined format)
+        return output.url || output.formats.reverse().find(f => f.url).url;
+    } catch (e) {
+        console.error("Media extraction failed:", e.message);
+        return null;
+    }
+}
+
+// Helper: Smart Query Generator
 async function getSmartQuery(input) {
-    if (!input || input.length < 3) {
+    if (!input || input.trim().length < 2) {
         const res = await aiClient.post('/chat/completions', {
             model: process.env.SUMMARY_MODEL,
-            messages: [{ role: 'system', content: 'Generate a random, interesting research topic query.' }]
+            messages: [{ role: 'system', content: 'Generate a creative, specific research query about technology, music, or history. Output ONLY the query.' }]
         });
         return res.data.choices[0].message.content;
     }
     return input;
 }
 
-// The "Agent" logic to find a relevant source
-async function getTargetUrl(query) {
-    const res = await aiClient.post('/chat/completions', {
-        model: process.env.AGENT_MODEL,
-        messages: [{ 
-            role: 'system', 
-            content: 'You are an agent. Return ONLY a URL that would best answer this query. Use Wikipedia, YouTube, or news sites.' 
-        }, { role: 'user', content: query }]
-    });
-    return res.data.choices[0].message.content.trim();
-}
-
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public/index.html'));
-});
-
 app.post('/ask', async (req, res) => {
     try {
         const userQuery = await getSmartQuery(req.body.query);
-        const targetUrl = await getTargetUrl(userQuery);
+        
+        // Agent: Find the best URL
+        const agentRes = await aiClient.post('/chat/completions', {
+            model: process.env.AGENT_MODEL,
+            messages: [{ 
+                role: 'system', 
+                content: 'You are a web agent. Find the most authoritative URL (Wikipedia, YouTube for music/video) to answer the user. Return ONLY the URL.' 
+            }, { role: 'user', content: userQuery }]
+        });
+        const targetUrl = agentRes.data.choices[0].message.content.trim();
 
-        // Fetch and Extract Content
+        // Extraction
         const webRes = await axios.get(targetUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         const dom = new JSDOM(webRes.data, { url: targetUrl });
         const reader = new Readability(dom.window.document);
-        const article = reader.parse();
+        const article = reader.parse() || { textContent: "No readable text found.", title: "Source" };
 
-        // Summarize Smartly
+        // Media Logic
+        let directMediaUrl = null;
+        let isVideo = targetUrl.includes('youtube.com') || targetUrl.includes('youtu.be');
+        
+        if (isVideo) {
+            directMediaUrl = await getMediaStream(targetUrl);
+        }
+
+        // Summary Agent
         const summaryRes = await aiClient.post('/chat/completions', {
             model: process.env.SUMMARY_MODEL,
             messages: [{ 
                 role: 'system', 
-                content: 'Summarize this content. If it mentions music or video, mention it clearly.' 
-            }, { role: 'user', content: article.textContent.substring(0, 5000) }]
+                content: 'Summarize the following content smartly. Use bullet points for key facts. If media is present, describe why it is relevant.' 
+            }, { role: 'user', content: `Title: ${article.title}\n\nContent: ${article.textContent.substring(0, 4000)}` }]
         });
+        const summaryHtml = summaryRes.data.choices[0].message.content.replace(/\n/g, '<br>');
 
-        const summary = summaryRes.data.choices[0].message.content;
-
-        // Construct a legacy-friendly response
-        // Note: For IE5, we use a simple template literal sent as HTML
+        // IE5 Compatible Response Construction
         res.send(`
+            <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
             <html>
             <head>
                 <title>Object.disarray() - Result</title>
-                <link rel="stylesheet" href="/style.css">
+                <style>
+                    body { font-family: "Verdana", sans-serif; background: #fff; color: #333; margin: 20px; }
+                    .container { width: 95%; max-width: 800px; margin: auto; }
+                    .summary { background: #f4f4f4; border: 1px solid #ccc; padding: 15px; margin-top: 10px; }
+                    .media-box { background: #000; color: #fff; padding: 10px; margin: 15px 0; text-align: center; }
+                    a { color: #0066cc; }
+                </style>
             </head>
-            <body bgcolor="#ffffff">
-                <table width="100%" border="0" cellpadding="20">
-                    <tr><td>
-                        <font face="Verdana, Arial, Helvetica" size="4"><b>Query:</b> ${userQuery}</font><br>
-                        <font face="Verdana, Arial, Helvetica" size="2">Source: ${targetUrl}</font>
-                        <hr noshade size="1">
-                        <div class="summary-box">
-                            <font face="Verdana, Arial, Helvetica" size="3">${summary}</font>
-                        </div>
-                        ${targetUrl.includes('youtube.com') ? 
-                            `<iframe width="420" height="315" src="https://www.youtube.com/embed/${targetUrl.split('v=')[1]}"></iframe>` 
-                            : ''}
-                        <p><a href="/">[ Back to Search ]</a></p>
-                    </td></tr>
-                </table>
+            <body>
+                <div class="container">
+                    <table width="100%" border="0" cellspacing="0" cellpadding="10">
+                        <tr>
+                            <td>
+                                <b><font size="5">Object.disarray()</font></b><br>
+                                <font size="2"><b>Source:</b> <a href="${targetUrl}">${targetUrl}</a></font>
+                                <hr noshade size="1">
+                                <div class="summary">
+                                    <font size="3">${summaryHtml}</font>
+                                </div>
+                                ${directMediaUrl ? `
+                                    <div class="media-box">
+                                        <font size="2"><b>Direct Media Link (yt-dlp Extracted):</b></font><br>
+                                        <a href="${directMediaUrl}" style="color:#00ff00;">[ Download / Open in Player ]</a><br>
+                                        <font size="1">Targeting YouTube stream for copyright compliance.</font>
+                                    </div>
+                                ` : ''}
+                                <p align="center"><a href="/">[ New Search ]</a></p>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
             </body>
             </html>
         `);
     } catch (err) {
-        res.send("Error: " + err.message);
+        res.status(500).send("System Error: " + err.message);
     }
 });
 
-app.listen(process.env.PORT || 3000, () => console.log('Object.disarray() live on port 3000'));
+app.listen(process.env.PORT || 3000, () => console.log('Object.disarray() running...'));
