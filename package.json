@@ -1,0 +1,17 @@
+{
+  "name": "object-disarray",
+  "version": "1.0.0",
+  "description": "Agentic Answer Engine for the modern and ancient web.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.6.2",
+    "dotenv": "^16.3.1",
+    "@mozilla/readability": "^0.4.4",
+    "jsdom": "^22.1.0",
+    "body-parser": "^1.20.2"
+  }
+}
