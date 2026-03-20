@@ -1,7 +1,7 @@
 {
   "name": "object-disarray",
-  "version": "1.0.0",
-  "description": "Agentic Answer Engine for the modern and ancient web.",
+  "version": "1.1.0",
+  "description": "Agentic Answer Engine with Direct Media Extraction",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -12,6 +12,7 @@
     "dotenv": "^16.3.1",
     "@mozilla/readability": "^0.4.4",
     "jsdom": "^22.1.0",
-    "body-parser": "^1.20.2"
+    "body-parser": "^1.20.2",
+    "yt-dlp-exec": "^1.0.1"
   }
 }
