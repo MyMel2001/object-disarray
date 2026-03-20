@@ -38,7 +38,7 @@ async function getSmartQuery(input) {
     if (!input || input.trim().length < 2) {
         const res = await aiClient.post('/chat/completions', {
             model: process.env.SUMMARY_MODEL,
-            messages: [{ role: 'system', content: 'Generate a creative, specific research query about technology, music, or history. Output ONLY the query.' }]
+            messages: [{ role: 'system', content: `Generate a creative, specific research query about ${input}. Output ONLY the query.` }]
         });
         return res.data.choices[0].message.content;
     }
@@ -54,7 +54,7 @@ app.post('/ask', async (req, res) => {
             model: process.env.AGENT_MODEL,
             messages: [{ 
                 role: 'system', 
-                content: 'You are a web agent. Find the most authoritative URL (Wikipedia, YouTube for music/video) to answer the user. Return ONLY the URL.' 
+                content: 'You are a web agent. Find the most authoritative URL (Wikipedia for general wiki-style knowledge, YouTube for music/video, Merriam Webster for definitions, official webpage/webpages for products, etc.) to answer the user. Return ONLY the URL.' 
             }, { role: 'user', content: userQuery }]
         });
         const targetUrl = agentRes.data.choices[0].message.content.trim();
