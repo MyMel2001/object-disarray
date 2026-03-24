@@ -88,6 +88,7 @@ app.post('/ask', async (req, res) => {
             <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
             <html>
             <head>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>Object.disarray() - Result</title>
                 <style>
                     body { font-family: "Verdana", sans-serif; background: #fff; color: #333; margin: 20px; }
